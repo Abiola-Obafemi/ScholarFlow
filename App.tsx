@@ -14,7 +14,9 @@ import {
   Sparkles,
   CheckCircle2,
   Bell,
-  BellOff
+  BellOff,
+  ChevronDown,
+  AlertCircle
 } from 'lucide-react';
 import { Assignment, Class, ViewType } from './types';
 import { INITIAL_CLASSES, CLASS_COLORS } from './constants';
@@ -38,7 +40,7 @@ const App: React.FC = () => {
   });
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
-    return localStorage.getItem('sf_notifications') === 'enabled' && Notification.permission === 'granted';
+    return localStorage.getItem('sf_notifications') === 'enabled' && (typeof Notification !== 'undefined' && Notification.permission === 'granted');
   });
 
   const [notifiedIds, setNotifiedIds] = useState<string[]>(() => {
@@ -83,23 +85,21 @@ const App: React.FC = () => {
 
   // Notification Logic
   const checkUpcomingDeadlines = useCallback(() => {
-    if (!notificationsEnabled || Notification.permission !== 'granted') return;
+    if (typeof Notification === 'undefined' || !notificationsEnabled || Notification.permission !== 'granted') return;
 
     const now = new Date();
-    // Check for assignments due in the next 24 hours
     const twentyFourHoursLater = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     
     activeAssignments.forEach(assignment => {
       const dueDate = new Date(assignment.dueDate);
       
-      // If due within 24 hours, in the future, and hasn't been notified yet
       if (dueDate > now && dueDate <= twentyFourHoursLater && !notifiedIds.includes(assignment.id)) {
         const cls = classes.find(c => c.id === assignment.classId);
         
         try {
           new Notification("Assignment Due Soon! 📚", {
             body: `${assignment.name} for ${cls?.name || 'your class'} is due within 24 hours.`,
-            tag: assignment.id // Use assignment ID as tag to prevent duplicate notifications for the same task
+            tag: assignment.id 
           });
 
           setNotifiedIds(prev => [...prev, assignment.id]);
@@ -110,17 +110,18 @@ const App: React.FC = () => {
     });
   }, [activeAssignments, classes, notificationsEnabled, notifiedIds]);
 
-  // Initial and periodic check
   useEffect(() => {
-    // Immediate check on mount/updates
     checkUpcomingDeadlines();
-    
-    // Set up a periodic check every 15 minutes
     const interval = setInterval(checkUpcomingDeadlines, 1000 * 60 * 15);
     return () => clearInterval(interval);
   }, [checkUpcomingDeadlines]);
 
   const handleToggleNotifications = async () => {
+    if (typeof Notification === 'undefined') {
+      alert("Notifications are not supported in this browser.");
+      return;
+    }
+
     if (!notificationsEnabled) {
       if (Notification.permission === 'default') {
         const permission = await Notification.requestPermission();
@@ -130,14 +131,12 @@ const App: React.FC = () => {
           new Notification("ScholarFlow Reminders Active!", {
             body: "You'll receive alerts for assignments due within 24 hours.",
           });
-        } else if (permission === 'denied') {
-          alert("Notification permission denied. Please enable them in your browser settings to receive reminders.");
         }
       } else if (Notification.permission === 'granted') {
         setNotificationsEnabled(true);
         localStorage.setItem('sf_notifications', 'enabled');
       } else {
-        alert("Notifications are blocked in your browser settings. Please enable them to use this feature.");
+        alert("Notifications are blocked. Please enable them in your browser settings.");
       }
     } else {
       setNotificationsEnabled(false);
@@ -192,7 +191,6 @@ const App: React.FC = () => {
     setIsAiLoading(false);
   };
 
-  // Nav items
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'assignments', label: 'Assignments', icon: CalendarCheck },
@@ -317,14 +315,7 @@ const App: React.FC = () => {
                   <p className="text-slate-500 mt-1">You have {activeAssignments.length} pending assignments.</p>
                 </div>
                 <button 
-                  onClick={() => {
-                    if (classes.length === 0) {
-                      alert('Please add a class first!');
-                      setCurrentView('classes');
-                    } else {
-                      setIsAddingAssignment(true);
-                    }
-                  }}
+                  onClick={() => setIsAddingAssignment(true)}
                   className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-indigo-200 dark:shadow-none transition-all active:scale-95"
                 >
                   <Plus className="w-5 h-5" />
@@ -391,14 +382,7 @@ const App: React.FC = () => {
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold">All Active Assignments</h2>
                 <button 
-                  onClick={() => {
-                    if (classes.length === 0) {
-                      alert('Please add a class first!');
-                      setCurrentView('classes');
-                    } else {
-                      setIsAddingAssignment(true);
-                    }
-                  }}
+                  onClick={() => setIsAddingAssignment(true)}
                   className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                 >
                   <Plus />
@@ -551,30 +535,64 @@ const App: React.FC = () => {
       {/* Add Assignment Modal */}
       {isAddingAssignment && (
         <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md p-8 animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md p-8 animate-in zoom-in-95 duration-200 overflow-hidden">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold">New Assignment</h2>
               <button onClick={() => setIsAddingAssignment(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full"><X /></button>
             </div>
-            <form onSubmit={addAssignment} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1.5 text-slate-500">Assignment Name</label>
-                <input required name="name" type="text" placeholder="e.g. History Essay" className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+            
+            {classes.length === 0 ? (
+              <div className="text-center space-y-4 py-4">
+                <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto">
+                  <AlertCircle className="w-8 h-8 text-amber-500" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg">No Classes Created</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">You need to add at least one class before creating assignments.</p>
+                </div>
+                <button 
+                  onClick={() => {
+                    setIsAddingAssignment(false);
+                    setCurrentView('classes');
+                    setIsAddingClass(true);
+                  }}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-5 h-5" />
+                  Add a Class Now
+                </button>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5 text-slate-500">Class</label>
-                <select required name="classId" className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
-                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5 text-slate-500">Due Date</label>
-                <input required name="dueDate" type="date" className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
-              </div>
-              <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-bold mt-4 shadow-lg shadow-indigo-100 dark:shadow-none transition-all">
-                Save Assignment
-              </button>
-            </form>
+            ) : (
+              <form onSubmit={addAssignment} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5 text-slate-500">Assignment Name</label>
+                  <input required name="name" type="text" placeholder="e.g. History Essay" className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-400" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5 text-slate-500">Class</label>
+                  <div className="relative">
+                    <select 
+                      required 
+                      name="classId" 
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer pr-10"
+                    >
+                      <option value="" disabled selected className="text-slate-400">Select a class...</option>
+                      {classes.map(c => <option key={c.id} value={c.id} className="text-slate-900">{c.name}</option>)}
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                      <ChevronDown className="w-5 h-5" />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5 text-slate-500">Due Date</label>
+                  <input required name="dueDate" type="date" className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                </div>
+                <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-bold mt-4 shadow-lg shadow-indigo-100 dark:shadow-none transition-all">
+                  Save Assignment
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}
@@ -590,16 +608,16 @@ const App: React.FC = () => {
             <form onSubmit={addClass} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1.5 text-slate-500">Class Name</label>
-                <input required name="name" type="text" placeholder="e.g. Physics" className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                <input required name="name" type="text" placeholder="e.g. Physics" className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-400" />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1.5 text-slate-500">Theme Color</label>
                 <div className="grid grid-cols-4 gap-3">
                   {CLASS_COLORS.map(color => (
-                    <label key={color.value} className="cursor-pointer relative">
+                    <label key={color.value} className="cursor-pointer relative group">
                       <input required type="radio" name="color" value={color.value} className="sr-only peer" />
                       <div 
-                        className="w-full aspect-square rounded-xl transition-all border-4 border-transparent peer-checked:border-white peer-checked:ring-2 peer-checked:ring-indigo-500"
+                        className="w-full aspect-square rounded-xl transition-all border-4 border-transparent peer-checked:border-white dark:peer-checked:border-slate-800 peer-checked:ring-4 peer-checked:ring-indigo-500 group-hover:scale-105"
                         style={{ backgroundColor: color.value }}
                       />
                     </label>
